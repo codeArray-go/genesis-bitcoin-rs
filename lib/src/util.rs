@@ -1,10 +1,11 @@
 use crate::sha256::Hash;
 use crate::types::Transection;
+use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MerkleRoot(Hash);
 impl MerkleRoot {
-    pub fn calculate(transections: &[Transection]) -> MarkleRoot {
+    pub fn calculate(transections: &[Transection]) -> MerkleRoot {
         let mut layer: Vec<Hash> = vec![];
         for transecton in transections {
             layer.push(Hash::hash(transecton));
@@ -21,6 +22,6 @@ impl MerkleRoot {
             layer = new_layer;
         }
 
-        MarkleRoot(layer[0]);
+        MerkleRoot(layer[0])
     }
 }

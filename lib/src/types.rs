@@ -1,8 +1,11 @@
 use crate::{
     U256,
     crypto::{PublicKey, Signature},
+    sha256::Hash,
+    util::MerkleRoot,
 };
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -33,8 +36,8 @@ impl Block {
         }
     }
 
-    pub fn hash(&self) -> ! {
-        unimplemented!()
+    pub fn hash(&self) -> Hash {
+        Hash::hash(self)
     }
 }
 
@@ -42,8 +45,8 @@ impl Block {
 pub struct BlockHeader {
     pub timestamp: DateTime<Utc>,
     pub nonce: u64,
-    pub previous_hash: [u8; 32],
-    pub merkle_root: [u8; 32],
+    pub previous_hash: Hash,
+    pub merkle_root: MerkleRoot,
     pub target: U256,
 }
 
@@ -51,8 +54,8 @@ impl BlockHeader {
     pub fn new(
         timestamp: DateTime<Utc>,
         nonce: u64,
-        previous_hash: [u8; 32],
-        merkle_root: [u8; 32],
+        previous_hash: Hash,
+        merkle_root: MerkleRoot,
         target: U256,
     ) -> Self {
         BlockHeader {
@@ -64,20 +67,14 @@ impl BlockHeader {
         }
     }
 
-    pub fn hash(&self) -> ! {
-        unimplemented!()
+    pub fn hash(&self) -> Hash {
+        Hash::hash(self)
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Transection {
-    pub inputs: Vec<TransectionInput>,
-    pub outputs: Vec<TransectionOutput>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransectionInput {
-    pub prev_transaction_output_hash: [u8; 32],
+    pub prev_transaction_output_hash: Hash,
     pub signature: Signature,
 }
 
@@ -86,4 +83,24 @@ pub struct TransectionOutput {
     pub value: u64,
     pub unique_id: Uuid,
     pub pubkey: PublicKey,
+}
+impl TransectionOutput {
+    pub fn hash(&self) -> Hash {
+        Hash::hash(self)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Transection {
+    pub inputs: Vec<TransectionInput>,
+    pub outputs: Vec<TransectionOutput>,
+}
+impl Transection {
+    pub fn new(inputs: Vec<TransectionInput>, outputs: Vec<TransectionOutput>) -> Self {
+        Transection { inputs, outputs }
+    }
+
+    pub fn hash(&self) -> Hash {
+        Hash::hash(self)
+    }
 }

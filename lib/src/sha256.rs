@@ -1,5 +1,5 @@
 use crate::U256;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha256::digest;
 use std::fmt;
 
@@ -18,7 +18,7 @@ impl Hash {
         let hash = digest(&serialized);
         let hash_bytes = hex::decode(hash).unwrap();
         let hash_array: [u8; 32] = hash_bytes.as_slice().try_into().unwrap();
-        Hash(U256::from(hash_array))
+        Hash(U256::from_big_endian(&hash_array))
     }
 
     pub fn matches_target(&self, target: U256) -> bool {
