@@ -1,13 +1,13 @@
 use crate::sha256::Hash;
-use crate::types::Transection;
+use crate::types::Transaction;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MerkleRoot(Hash);
 impl MerkleRoot {
-    pub fn calculate(transections: &[Transection]) -> MerkleRoot {
+    pub fn calculate(transactions: &[Transaction]) -> MerkleRoot {
         let mut layer: Vec<Hash> = vec![];
-        for transecton in transections {
+        for transecton in transactions {
             layer.push(Hash::hash(transecton));
         }
 
