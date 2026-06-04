@@ -15,7 +15,7 @@ impl Signature {
         Signature(signature)
     }
 
-    pub fn veryfy_signature(&self, output_hash: &Hash, public_key: &PublicKey) -> bool {
+    pub fn verify_signature(&self, output_hash: &Hash, public_key: &PublicKey) -> bool {
         public_key
             .0
             .verify(&output_hash.as_bytes(), &self.0)

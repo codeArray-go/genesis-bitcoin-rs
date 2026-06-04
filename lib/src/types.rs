@@ -6,7 +6,6 @@ use crate::{
     util::MerkleRoot,
 };
 use chrono::{DateTime, Utc};
-use ecdsa::signature::Verifier;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -121,19 +120,19 @@ impl Block {
 
                 if !input
                     .signature
-                    .verify(&input.prev_transaction_output_hash, &prev_output.pubkey)
+                    .verify_signature(&input.prev_transaction_output_hash, &prev_output.pubkey)
                 {
                     return Err(BtcError::InvalidSignature);
                 }
                 input_value += prev_output.value;
-                input.insert(input.prev_transaction_output_hash, prev_output.clone());
+                inputs.insert(input.prev_transaction_output_hash, prev_output.clone());
             }
 
-            for outpu in &transaction.outputs {
-                output_value += output_value;
+            for output in &transaction.outputs {
+                output_value += output.value;
 
                 if input_value < output_value {
-                    return Err(Error::InvalidTransection);
+                    return Err(BtcError::InvalidTransection);
                 }
             }
         }
