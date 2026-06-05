@@ -5,22 +5,84 @@ use crate::{
     sha256::Hash,
     util::MerkleRoot,
 };
+use bigdecimal::{BigDecimal, num_traits::CheckedAdd};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use uuid::Uuid;
+use std::collections::{HashMap, HashSet};
+use uuid::{Uuid, timestamp};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Blockchain {
-    pub utxos: HashMap<Hash, TransactionOutput>,
-    pub blocks: Vec<Block>,
+    utxos: HashMap<Hash, TransactionOutput>,
+    target: U256,
+    blocks: Vec<Block>,
 }
 impl Blockchain {
     pub fn new() -> Self {
         Blockchain {
             utxos: HashMap::new(),
+            target: crate::MIN_TARGET,
             blocks: vec![],
         }
+    }
+
+    pub fn utxos(&self) -> &HashMap<Hash, TransactionOutput> {
+        &self.utxos
+    }
+
+    pub fn target(&self) -> &U256 {
+        &self.target
+    }
+
+    pub fn blocks(&self) -> impl Iterator<Item = &Block> {
+        self.blocks.iter()
+    }
+
+    pub fn block_height(&self) -> u64 {
+        self.blocks.len() as u64
+    }
+
+    pub fn try_adjust_target(&mut self) {
+        if self.blocks.is_empty() {
+            return;
+        }
+
+        if self.blocks.len() % crate::DIFFICULTY_UPDATE_INTERVAL as usize != 0 {
+            return;
+        }
+
+        let start_time = self.blocks
+            [self.blocks.len() - crate::DIFFICULTY_UPDATE_INTERVAL as usize]
+            .header
+            .timestamp;
+        let end_time = self.blocks.last().unwrap().header.timestamp;
+
+        let time_diff = end_time - start_time;
+        let time_diff_seconds = time_diff.num_seconds();
+
+        let target_seconds = crate::IDEAL_BLOCK_TIME * crate::DIFFICULTY_UPDATE_INTERVAL;
+        let new_target = BigDecimal::parse_bytes(&self.target.to_string().as_bytes(), 10)
+            .expect("BUG: No Bug")
+            * (BigDecimal::from(time_diff_seconds) / BigDecimal::from(target_seconds));
+
+        let new_target_str = new_target
+            .to_string()
+            .split('.')
+            .next()
+            .expect("Bug: Expected a decimal point")
+            .to_owned();
+
+        let new_target: U256 = U256::from_str_radix(&new_target_str, 10).expect("BUG: No Bug.");
+
+        let new_target = if new_target < self.target / 4 {
+            self.target / 4
+        } else if new_target > self.target * 4 {
+            self.target * 4
+        } else {
+            new_target
+        };
+
+        self.target = new_target.min(crate::MIN_TARGET);
     }
 
     pub fn add_block(&mut self, block: Block) -> Result<(), BtcError> {
@@ -56,9 +118,17 @@ impl Blockchain {
         }
 
         // Verify all transaction of block
-        // block.verify_transactions(self.block_height(), &self.utxos)?;
+        block.verify_transactions(self.block_height(), &self.utxos)?;
+
+        // Remove transactions from mempool that are now in the block
+        let block_transactions: HashSet<_> =
+            block.transactions.iter().map(|tx| tx.hash()).collect();
+        self.memepool
+            .retain(|(_, tx)| !block_transactions.contains(&tx.hash()));
 
         self.blocks.push(block);
+        self.try_adjust_target();
+
         Ok(())
     }
 
@@ -90,19 +160,92 @@ impl Block {
         }
     }
 
+    pub fn calculate_miner_fee(
+        &self,
+        utxos: HashMap<Hash, TransactionOutput>,
+    ) -> Result<u64, BtcError> {
+        let mut inputs: HashMap<Hash, TransactionOutput> = HashMap::new();
+        let mut outputs: HashMap<Hash, TransactionOutput> = HashMap::new();
+
+        for transaction in self.transactions.iter().skip(1) {
+            for input in &transaction.inputs {
+                let prev_output = utxos.get(&input.prev_transaction_output_hash);
+                if prev_output.is_none() {
+                    return Err(BtcError::InvalidTransection);
+                }
+
+                let prev_output = prev_output.unwrap();
+
+                if inputs.contains_key(&input.prev_transaction_output_hash) {
+                    return Err(BtcError::InvalidTransection);
+                }
+
+                inputs.insert(input.prev_transaction_output_hash, prev_output.clone());
+            }
+
+            for output in &transaction.outputs {
+                if outputs.contains_key(&output.hash()) {
+                    return Err(BtcError::InvalidTransection);
+                }
+
+                outputs.insert(output.hash(), output.clone());
+            }
+        }
+
+        let input_value: u64 = inputs.values().map(|input| input.value).sum();
+        let output_value: u64 = outputs.values().map(|output| output.value).sum();
+        Ok(input_value - output_value)
+    }
+
+    pub fn verify_coinbase_transection(
+        &self,
+        predicted_block_height: u64,
+        utxos: HashMap<Hash, TransactionOutput>,
+    ) -> Result<(), BtcError> {
+        let coinbase_transection = &self.transactions[0];
+        if coinbase_transection.inputs.len() != 0 {
+            return Err(BtcError::InvalidTransection);
+        }
+
+        if coinbase_transection.outputs.len() == 0 {
+            return Err(BtcError::InvalidTransection);
+        }
+
+        let miner_fee = self.calculate_miner_fee(utxos)?;
+
+        let block_reward = crate::INITIAL_REWARD * 10u64.pow(8)
+            / 2u64.pow((predicted_block_height / crate::HALVING_REWARD) as u32);
+
+        let total_coinbase_outputs: u64 = coinbase_transection
+            .outputs
+            .iter()
+            .map(|output| output.value)
+            .sum();
+
+        if total_coinbase_outputs != block_reward + miner_fee {
+            return Err(BtcError::InvalidTransection);
+        }
+
+        Ok(())
+    }
+
     pub fn hash(&self) -> Hash {
         Hash::hash(self)
     }
 
     pub fn verify_transactions(
         &self,
+        predicted_block_height: u64,
         utxos: &HashMap<Hash, TransactionOutput>,
     ) -> Result<(), BtcError> {
         let mut inputs: HashMap<Hash, TransactionOutput> = HashMap::new();
         if self.transactions.is_empty() {
             return Err(BtcError::InvalidTransection);
         }
-        for transaction in &self.transactions {
+
+        self.verify_coinbase_transection(predicted_block_height, utxos)?;
+
+        for transaction in self.transactions.iter().skip(1) {
             let mut input_value = 0;
             let mut output_value = 0;
 
@@ -169,6 +312,27 @@ impl BlockHeader {
 
     pub fn hash(&self) -> Hash {
         Hash::hash(self)
+    }
+
+    pub fn mine(&mut self, steps: usize) -> bool {
+        if self.hash().matches_target(self.target) {
+            return true;
+        }
+
+        for _ in 0..steps {
+            if let Some(new_nonce) = self.nonce.checked_add(1) {
+                self.nonce = new_nonce;
+            } else {
+                self.nonce = 0;
+                self.timestamp = Utc::now();
+            }
+
+            if self.hash().matches_target(self.target) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
