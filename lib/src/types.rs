@@ -5,17 +5,21 @@ use crate::{
     sha256::Hash,
     util::MerkleRoot,
 };
-use bigdecimal::{BigDecimal, num_traits::CheckedAdd};
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use uuid::{Uuid, timestamp};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+};
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Blockchain {
-    utxos: HashMap<Hash, TransactionOutput>,
+    utxos: HashMap<Hash, (bool, TransactionOutput)>,
     target: U256,
     blocks: Vec<Block>,
+    mempool: Vec<Transaction>,
 }
 impl Blockchain {
     pub fn new() -> Self {
@@ -23,10 +27,99 @@ impl Blockchain {
             utxos: HashMap::new(),
             target: crate::MIN_TARGET,
             blocks: vec![],
+            mempool: vec![],
         }
     }
 
-    pub fn utxos(&self) -> &HashMap<Hash, TransactionOutput> {
+    pub fn add_to_mempool(&mut self, transaction: Transaction) -> Result<(), BtcError> {
+        let mut known = HashSet::new();
+        for input in &transaction.inputs {
+            if !self.utxos.contains_key(&input.prev_transaction_output_hash) {
+                return Err(BtcError::InvalidTransection);
+            }
+
+            if known.contains(&input.prev_transaction_output_hash) {
+                return Err(BtcError::InvalidTransection);
+            }
+
+            known.insert(input.prev_transaction_output_hash);
+        }
+
+        // check if any of the utxos have the bool mark set to true and if so, find the transaction that references them in mempool, remove it, and set all the utxos it references to false
+        for input in &transaction.inputs {
+            if let Some((true, _)) = self.utxos.get(&input.prev_transaction_output_hash) {
+                let referencing_transaction =
+                    self.mempool.iter().enumerate().find(|(_, transaction)| {
+                        transaction
+                            .outputs
+                            .iter()
+                            .any(|output| output.hash() == input.prev_transaction_output_hash)
+                    });
+
+                if let Some((idx, referencing_transaction)) = referencing_transaction {
+                    for input in &referencing_transaction.inputs {
+                        self.utxos
+                            .entry(input.prev_transaction_output_hash)
+                            .and_modify(|(marked, _)| {
+                                *marked = false;
+                            });
+                    }
+                    self.mempool.remove(idx);
+                } else {
+                    self.utxos
+                        .entry(input.prev_transaction_output_hash)
+                        .and_modify(|(marked, _)| {
+                            *marked = false;
+                        });
+                }
+            }
+        }
+
+        let all_input = transaction
+            .inputs
+            .iter()
+            .map(|input| {
+                self.utxos
+                    .get(&input.prev_transaction_output_hash)
+                    .expect("Bug")
+                    .1
+                    .value
+            })
+            .sum::<u64>();
+
+        let all_ouput = transaction.outputs.iter().map(|ouput| ouput.value).sum();
+
+        if all_input < all_ouput {
+            return Err(BtcError::InvalidTransection);
+        }
+
+        self.mempool.push(transaction);
+
+        self.mempool.sort_by_key(|tx| {
+            let tx_in: u64 = tx
+                .inputs
+                .iter()
+                .map(|input| {
+                    &self
+                        .utxos
+                        .get(&input.prev_transaction_output_hash)
+                        .expect("Bug")
+                        .1
+                        .value
+                })
+                .sum::<u64>();
+
+            let tx_out: u64 = tx.outputs.iter().map(|output| output.value).sum();
+
+            let miner_fee = tx_in - tx_out;
+
+            Reverse(miner_fee)
+        });
+
+        Ok(())
+    }
+
+    pub fn utxos(&self) -> &HashMap<Hash, (bool, TransactionOutput)> {
         &self.utxos
     }
 
@@ -123,8 +216,8 @@ impl Blockchain {
         // Remove transactions from mempool that are now in the block
         let block_transactions: HashSet<_> =
             block.transactions.iter().map(|tx| tx.hash()).collect();
-        self.memepool
-            .retain(|(_, tx)| !block_transactions.contains(&tx.hash()));
+        self.mempool
+            .retain(|tx| !block_transactions.contains(&tx.hash()));
 
         self.blocks.push(block);
         self.try_adjust_target();
@@ -139,7 +232,8 @@ impl Blockchain {
                     self.utxos.remove(&input.prev_transaction_output_hash);
                 }
                 for output in transaction.outputs.iter() {
-                    self.utxos.insert(transaction.hash(), output.clone());
+                    self.utxos
+                        .insert(transaction.hash(), (false, output.clone()));
                 }
             }
         }
@@ -162,14 +256,16 @@ impl Block {
 
     pub fn calculate_miner_fee(
         &self,
-        utxos: HashMap<Hash, TransactionOutput>,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
     ) -> Result<u64, BtcError> {
         let mut inputs: HashMap<Hash, TransactionOutput> = HashMap::new();
         let mut outputs: HashMap<Hash, TransactionOutput> = HashMap::new();
 
         for transaction in self.transactions.iter().skip(1) {
             for input in &transaction.inputs {
-                let prev_output = utxos.get(&input.prev_transaction_output_hash);
+                let prev_output = utxos
+                    .get(&input.prev_transaction_output_hash)
+                    .map(|(_, ouput)| ouput);
                 if prev_output.is_none() {
                     return Err(BtcError::InvalidTransection);
                 }
@@ -200,7 +296,7 @@ impl Block {
     pub fn verify_coinbase_transection(
         &self,
         predicted_block_height: u64,
-        utxos: HashMap<Hash, TransactionOutput>,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
     ) -> Result<(), BtcError> {
         let coinbase_transection = &self.transactions[0];
         if coinbase_transection.inputs.len() != 0 {
@@ -211,7 +307,7 @@ impl Block {
             return Err(BtcError::InvalidTransection);
         }
 
-        let miner_fee = self.calculate_miner_fee(utxos)?;
+        let miner_fee = self.calculate_miner_fee(&utxos)?;
 
         let block_reward = crate::INITIAL_REWARD * 10u64.pow(8)
             / 2u64.pow((predicted_block_height / crate::HALVING_REWARD) as u32);
@@ -236,7 +332,7 @@ impl Block {
     pub fn verify_transactions(
         &self,
         predicted_block_height: u64,
-        utxos: &HashMap<Hash, TransactionOutput>,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
     ) -> Result<(), BtcError> {
         let mut inputs: HashMap<Hash, TransactionOutput> = HashMap::new();
         if self.transactions.is_empty() {
@@ -250,7 +346,9 @@ impl Block {
             let mut output_value = 0;
 
             for input in &transaction.inputs {
-                let prev_output = utxos.get(&input.prev_transaction_output_hash);
+                let prev_output = utxos
+                    .get(&input.prev_transaction_output_hash)
+                    .map(|(_, ouput)| ouput);
                 if prev_output.is_none() {
                     return Err(BtcError::InvalidTransection);
                 }
