@@ -15,7 +15,12 @@ pub const MIN_TARGET: U256 = U256([
     0xFFFF_FFFF_FFFF_FFFF,
     0x0000_FFFF_FFFF_FFFF,
 ]);
+
+// difficulty update interval in block
 pub const DIFFICULTY_UPDATE_INTERVAL: u64 = 50;
+
+// maximum mempool transaction age in seconds
+pub const MAXIMUM_MEMPOOL_TRANSACTION_AGE: u64 = 600;
 
 pub mod crypto;
 pub mod error;
