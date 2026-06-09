@@ -3,11 +3,14 @@ use crate::{
     U256,
     error::{BtcError, Result},
     sha256::Hash,
-    util::MerkleRoot,
+    util::{MerkleRoot, Saveable},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write},
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Block {
@@ -148,6 +151,18 @@ impl Block {
         }
 
         Ok(())
+    }
+}
+
+impl Saveable for Block {
+    fn load<I: Read>(reader: I) -> IoResult<Self> {
+        ciborium::de::from_reader(reader)
+            .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Failed to deserialize Block"))
+    }
+
+    fn save<O: Write>(&self, writer: O) -> IoResult<()> {
+        ciborium::ser::into_writer(self, writer)
+            .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Failed to serialize Block"))
     }
 }
 

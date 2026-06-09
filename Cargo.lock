@@ -75,6 +75,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "btclib"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "ciborium",
+ "ecdsa",
+ "hex",
+ "k256",
+ "rand",
+ "serde",
+ "sha256",
+ "thiserror",
+ "uint",
+ "uuid",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,24 +502,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
-name = "lib"
-version = "0.1.0"
-dependencies = [
- "bigdecimal",
- "chrono",
- "ciborium",
- "ecdsa",
- "hex",
- "k256",
- "rand",
- "serde",
- "sha256",
- "thiserror",
- "uint",
- "uuid",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -528,6 +528,9 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 [[package]]
 name = "miner"
 version = "0.1.0"
+dependencies = [
+ "btclib",
+]
 
 [[package]]
 name = "node"

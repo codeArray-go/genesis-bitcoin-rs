@@ -8,6 +8,7 @@ target/
 !.vscode/code-workspace
 .idea/
 *.iml
+.cbor
 .DS_Store
 .AppleDouble
 .LSOverride

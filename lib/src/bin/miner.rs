@@ -24,7 +24,7 @@ fn main() {
     }
 
     println!("original: {:#?}", block_0);
-    println!("original: {:#?}", block_0.header.hash());
+    println!("original: {}", block_0.header.hash());
     println!("original: {:#?}", block);
-    println!("original: {:#?}", block.header.hash());
+    println!("original hex: {}", block.header.hash());
 }
