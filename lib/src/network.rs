@@ -12,11 +12,11 @@ pub enum Message {
     UTXOs(Vec<(TransactionOutput, bool)>),
     SubmitTransaction(Transaction),
     NewTrasaction(Transaction),
-    FetchTemplete(PublicKey),
-    Templete(Block),
-    ValidateTemplete(Block),
-    TempleteValidity(bool),
-    SubmitTemplete(Block),
+    FetchTemplate(PublicKey),
+    Template(Block),
+    ValidateTemplate(Block),
+    TemplateValidity(bool),
+    SubmitTemplate(Block),
     DiscoverNodes,
     NodesList(Vec<String>),
     AskDifference(u32),
@@ -47,7 +47,7 @@ impl Message {
         Ok(())
     }
 
-    pub async fn recieve(
+    pub async fn receive(
         &self,
         stream: &mut (impl AsyncRead + Unpin),
     ) -> Result<Self, ciborium::de::Error<IoError>> {
