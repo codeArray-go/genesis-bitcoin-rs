@@ -7,8 +7,11 @@ construct_uint! {
 }
 
 pub const INITIAL_REWARD: u64 = 50;
+
 pub const HALVING_REWARD: u64 = 210;
+
 pub const IDEAL_BLOCK_TIME: u64 = 10;
+
 pub const MIN_TARGET: U256 = U256([
     0xFFFF_FFFF_FFFF_FFFF,
     0xFFFF_FFFF_FFFF_FFFF,
@@ -21,6 +24,9 @@ pub const DIFFICULTY_UPDATE_INTERVAL: u64 = 50;
 
 // maximum mempool transaction age in seconds
 pub const MAXIMUM_MEMPOOL_TRANSACTION_AGE: u64 = 600;
+
+// Maximum amount of transaction allowed in a block
+pub const BLOCK_TRANSACTION_CAP: usize = 20;
 
 pub mod crypto;
 pub mod error;

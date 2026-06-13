@@ -1,9 +1,9 @@
 use crate::{sha256::Hash, util::Saveable};
 use ecdsa::{
-    Signature as ECDSASignature, SigningKey, VerifyingKey,
     signature::{Signer, Verifier},
+    Signature as ECDSASignature, SigningKey, VerifyingKey,
 };
-use k256::{Secp256k1, pkcs8::EncodePublicKey};
+use k256::{pkcs8::EncodePublicKey, Secp256k1};
 use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 
