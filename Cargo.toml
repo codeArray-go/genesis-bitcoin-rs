@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "lib", "manual_code",
+    "lib",
     "miner",
     "node",
     "wallet",

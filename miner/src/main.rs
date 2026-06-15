@@ -9,7 +9,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tokio::{net::TcpStream, stream, sync::Mutex, time::interval};
+use tokio::{net::TcpStream, sync::Mutex, time::interval};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -59,7 +59,7 @@ impl Miner {
         message.send(&mut *stream).await?;
         drop(stream);
         let mut stream = self.stream.lock().await;
-        match message.receive(&mut *stream).await? {
+        match Message::receive(&mut *stream).await? {
             Message::Template(template) => {
                 println!(
                     "New template received with target {}",
@@ -84,7 +84,7 @@ impl Miner {
             drop(stream);
 
             let mut stream = self.stream.lock().await;
-            match message.receive(&mut *stream).await? {
+            match Message::receive(&mut *stream).await? {
                 Message::TemplateValidity(valid) => {
                     drop(stream);
                     if !valid {

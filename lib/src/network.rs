@@ -48,7 +48,6 @@ impl Message {
     }
 
     pub async fn receive(
-        &self,
         stream: &mut (impl AsyncRead + Unpin),
     ) -> Result<Self, ciborium::de::Error<IoError>> {
         let mut bytes = [0u8; 8];
