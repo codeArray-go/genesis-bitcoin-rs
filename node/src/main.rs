@@ -1,11 +1,11 @@
-use std::{path::Path, sync::RwLock};
+use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use argh::FromArgs;
 use btclib::types::Blockchain;
 use dashmap::DashMap;
 use static_init::dynamic;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::RwLock};
 
 mod handler;
 mod util;
@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
             // Rebuild UTXOS
             {
                 let mut blockchain = BLOCKCHAIN.write().await;
-                blockchain.rebuild_utxos();
+                blockchain.rebuild_utoxs();
             }
 
             // Try for dificullty adjustments

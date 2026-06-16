@@ -1,4 +1,4 @@
-use anyhow::{Ok, Result, anyhow};
+use anyhow::{Result, anyhow};
 use btclib::{crypto::PublicKey, network::Message, types::Block, util::Saveable};
 use clap::Parser;
 use std::{
@@ -80,7 +80,7 @@ impl Miner {
         if let Some(template) = self.current_template.lock().unwrap().clone() {
             let message = Message::ValidateTemplate(template);
             let mut stream = self.stream.lock().await;
-            message.send(&mut *stream);
+            message.send(&mut *stream).await?;
             drop(stream);
 
             let mut stream = self.stream.lock().await;
@@ -115,7 +115,7 @@ impl Miner {
         println!("Submission of block start.");
         let message = Message::SubmitTemplate(block);
         let mut stream = self.stream.lock().await;
-        message.send(&mut *stream);
+        message.send(&mut *stream).await?;
         self.mining.store(false, Relaxed);
         Ok(())
     }
