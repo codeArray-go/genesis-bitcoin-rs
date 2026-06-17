@@ -268,7 +268,7 @@ impl Blockchain {
         }
     }
 
-    pub fn rebuild_utoxs(&mut self) {
+    pub fn rebuild_utxos(&mut self) {
         for block in &self.blocks {
             for transaction in &block.transactions {
                 for input in &transaction.inputs {

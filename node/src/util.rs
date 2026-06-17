@@ -1,19 +1,40 @@
 use anyhow::{Context, Ok, Result};
 use btclib::{network::Message, types::Blockchain, util::Saveable};
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, time};
+
+pub async fn cleanup() {
+    let mut interval = time::interval(time::Duration::from_secs(30));
+    loop {
+        interval.tick().await;
+        println!("cleaning mempool");
+        let mut blockchain = crate::BLOCKCHAIN.write().await;
+        blockchain.cleanup_mempool();
+    }
+}
+
+pub async fn save(blockchain_file: String) {
+    let mut interval = time::interval(time::Duration::from_secs(15));
+
+    loop {
+        interval.tick().await;
+        println!("Saving blockchain to drive.");
+        let blockchain = crate::BLOCKCHAIN.write().await;
+        blockchain.save_to_file(blockchain_file.clone()).unwrap();
+    }
+}
 
 pub async fn load_blockchain(blockchain_file: &str) -> Result<()> {
     println!("Blockchain file exists loading...");
     let new_blockchain = Blockchain::read_from_file(blockchain_file);
     println!("Blockchain file loaded.");
     let mut blockchain = crate::BLOCKCHAIN.write().await;
-    *blockchain = new_blockchain;
+    *blockchain = new_blockchain?;
     println!("rebuilding utxos...");
     blockchain.rebuild_utxos();
     println!("checking if target needs to be adjusted");
-    println!("Current target: {}", blockchain.target);
+    println!("Current target: {}", blockchain.target());
     blockchain.try_adjust_target();
-    println!("New target is: {}", blockchain.target);
+    println!("New target is: {}", blockchain.target());
     println!("Initialization complete");
     Ok(())
 }
@@ -24,7 +45,7 @@ pub async fn populate_connections(nodes: &[String]) -> Result<()> {
         println!("Connecting to node: {}", node);
         let mut stream = TcpStream::connect(node).await?;
         let message = Message::DiscoverNodes;
-        message.send(&mut stream).await;
+        message.send(&mut stream).await?;
         println!("Send discoverable node to {}", node);
 
         let message = Message::receive(&mut stream).await?;
@@ -93,7 +114,7 @@ pub async fn download_blockchain(node: &str, count: u32) -> Result<()> {
 
     for i in 0..count as usize {
         let message = Message::FetchBlock(i);
-        message.send(&mut *stream).await;
+        message.send(&mut *stream).await?;
 
         let message = Message::receive(&mut *stream).await?;
         match message {

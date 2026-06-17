@@ -5,7 +5,10 @@ use argh::FromArgs;
 use btclib::types::Blockchain;
 use dashmap::DashMap;
 use static_init::dynamic;
-use tokio::{net::TcpStream, sync::RwLock};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::RwLock,
+};
 
 mod handler;
 mod util;
@@ -38,6 +41,17 @@ async fn main() -> Result<()> {
     let port = args.port;
     let blockchain_file = args.blockchain_file;
     let node = args.node;
+    let add = format!("0.0.0.0:{}", port);
+    let listner = TcpListener::bind(add).await?;
+    println!("Listening on port: {}", port);
+
+    tokio::spawn(util::cleanup());
+    tokio::spawn(util::save(blockchain_file.clone()));
+
+    loop {
+        let (socket, _) = listner.accept().await?;
+        tokio::spawn(handler::handle_connection(socket));
+    }
 
     if Path::new(&blockchain_file).exists() {
         util::load_blockchain(&blockchain_file).await?;
@@ -57,7 +71,7 @@ async fn main() -> Result<()> {
             // Rebuild UTXOS
             {
                 let mut blockchain = BLOCKCHAIN.write().await;
-                blockchain.rebuild_utoxs();
+                blockchain.rebuild_utxos();
             }
 
             // Try for dificullty adjustments

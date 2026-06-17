@@ -1,9 +1,9 @@
 use crate::{sha256::Hash, util::Saveable};
 use ecdsa::{
-    signature::{Signer, Verifier},
     Signature as ECDSASignature, SigningKey, VerifyingKey,
+    signature::{Signer, Verifier},
 };
-use k256::{pkcs8::EncodePublicKey, Secp256k1};
+use k256::{Secp256k1, pkcs8::EncodePublicKey};
 use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 
@@ -24,7 +24,7 @@ impl Signature {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct PublicKey(VerifyingKey<Secp256k1>);
 impl Saveable for PublicKey {
     fn load<I: Read>(mut reader: I) -> IoResult<Self> {
