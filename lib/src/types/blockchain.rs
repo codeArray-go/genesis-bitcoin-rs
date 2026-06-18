@@ -32,6 +32,12 @@ impl Blockchain {
         }
     }
 
+    pub fn calculate_block_reward(&self) -> u64 {
+        let block_height = self.block_height();
+        let halving = block_height / crate::HALVING_REWARD;
+        (crate::INITIAL_REWARD * 10u64.pow(8)) >> halving
+    }
+
     pub fn add_to_mempool(&mut self, transaction: Transaction) -> Result<()> {
         let mut known = HashSet::new();
         for input in &transaction.inputs {

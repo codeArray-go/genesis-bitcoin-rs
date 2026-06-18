@@ -42,16 +42,17 @@ async fn main() -> Result<()> {
     let blockchain_file = args.blockchain_file;
     let node = args.node;
     let add = format!("0.0.0.0:{}", port);
-    let listner = TcpListener::bind(add).await?;
-    println!("Listening on port: {}", port);
+    let listener = TcpListener::bind(&add).await?;
+    println!("Listening on port: {}", add);
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        tokio::spawn(handler::handle_connection(socket));
+        break;
+    }
 
     tokio::spawn(util::cleanup());
     tokio::spawn(util::save(blockchain_file.clone()));
-
-    loop {
-        let (socket, _) = listner.accept().await?;
-        tokio::spawn(handler::handle_connection(socket));
-    }
 
     if Path::new(&blockchain_file).exists() {
         util::load_blockchain(&blockchain_file).await?;
