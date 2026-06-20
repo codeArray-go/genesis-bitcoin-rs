@@ -24,7 +24,7 @@ impl Signature {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PublicKey(VerifyingKey<Secp256k1>);
 impl Saveable for PublicKey {
     fn load<I: Read>(mut reader: I) -> IoResult<Self> {
