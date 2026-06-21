@@ -1,13 +1,8 @@
-use crate::core::{Config, Core, FeeConfig, FeeType, Recipient};
+use crate::core::{ Config, Core, FeeConfig, FeeType, Recipient };
 use anyhow::Result;
 use btclib::types::Transaction;
-use clap::{Parser, Subcommand};
-use std::{
-    io::{self, Write},
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use clap::{ Parser, Subcommand };
+use std::{ io::{ self, Write }, path::PathBuf, sync::Arc, time::Duration };
 use tokio::time;
 
 mod core;
@@ -74,14 +69,11 @@ async fn run_cli(core: Arc<Core>) -> Result<()> {
 
                 let recipient = parts[1];
                 let amount: u64 = parts[2].parse()?;
-                let recipient_key = core
-                    .config
-                    .contacts
+                let recipient_key = core.config.contacts
                     .iter()
                     .find(|r| r.name == recipient)
                     .ok_or_else(|| anyhow::anyhow!("Recipient not found"))?
-                    .load()?
-                    .key;
+                    .load()?.key;
 
                 if let Err(e) = core.fetch_utxos().await {
                     println!("Failed to fetch utxos: {e}");
@@ -90,9 +82,11 @@ async fn run_cli(core: Arc<Core>) -> Result<()> {
                 let transaction = core.create_transaction(&recipient_key, amount).await?;
                 core.tx_sender.send(transaction).await?;
                 println!("Transaction send succesfully.");
-                core.fetch_utxos().await;
+                core.fetch_utxos().await?;
             }
-            "exit" => break,
+            "exit" => {
+                break;
+            }
             _ => println!("Unknown command"),
         }
     }
@@ -111,9 +105,9 @@ fn generate_dummy_config(path: &PathBuf) -> Result<()> {
             Recipient {
                 name: "Alice".to_string(),
                 key: PathBuf::from("alice.pub.pem"),
-            },
+            }
         ],
-        default_node: "127.0.0.0.0:9000".to_string(),
+        default_node: "127.0.0.0:9000".to_string(),
         fee_config: FeeConfig {
             fee_type: FeeType::Percent,
             value: 0.1,
@@ -128,6 +122,27 @@ fn generate_dummy_config(path: &PathBuf) -> Result<()> {
 }
 
 #[tokio::main]
-async fn main() {
-    println!("Hello, world!");
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    if let Some(Commands::GenerateConfig { output }) = &cli.command {
+        return generate_dummy_config(output);
+    }
+
+    let config_path = cli.config.unwrap_or_else(|| PathBuf::from("wallet_cofig.toml"));
+    let mut core = Core::load(config_path.clone())?;
+
+    if let Some(node) = cli.node {
+        core.config.default_node = node;
+    }
+
+    let (tx_sender, tx_receiver) = kanal::bounded(10);
+    core.tx_sender = tx_sender.clone_async();
+    let core = Arc::new(core);
+
+    tokio::spawn(update_utxos(core.clone()));
+    tokio::spawn(handle_transaction(tx_receiver.clone_async(), core.clone()));
+
+    run_cli(core).await?;
+    Ok(())
 }

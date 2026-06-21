@@ -1,15 +1,14 @@
-use anyhow::{Ok, Result};
+use anyhow::{ Ok, Result };
 use btclib::{
-    crypto::{PrivateKey, PublicKey},
+    crypto::{ PrivateKey, PublicKey },
     network::Message,
-    types::{Transaction, TransactionOutput},
+    types::{ Transaction, TransactionOutput },
     util::Saveable,
 };
 use crossbeam_skiplist::SkipMap;
-use cursive::reexports::serde_json::value;
 use kanal::AsyncSender;
-use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, sync::Arc};
+use serde::{ Deserialize, Serialize };
+use std::{ fs, path::PathBuf, sync::Arc };
 use tokio::net::TcpStream;
 
 #[derive(Clone)]
@@ -72,7 +71,7 @@ impl Core {
                     utxos
                         .into_iter()
                         .map(|(output, marked)| (marked, output))
-                        .collect(),
+                        .collect()
                 );
             } else {
                 return Err(anyhow::anyhow!("Unexpected response from node."));
@@ -90,24 +89,77 @@ impl Core {
     }
 
     pub fn get_balance(&self) -> u64 {
-        self.utxos
-            .utxos
+        self.utxos.utxos
             .iter()
-            .map(|entry| entry.value().iter().map(|utxo| utxo.1.value).sum::<u64>())
+            .map(|entry| {
+                entry
+                    .value()
+                    .iter()
+                    .map(|utxo| utxo.1.value)
+                    .sum::<u64>()
+            })
             .sum()
     }
 
     pub async fn create_transaction(
         &self,
         recipient: &PublicKey,
-        amount: u64,
+        amount: u64
     ) -> Result<Transaction> {
+        let fees = self.calculate_fee(amount);
+        let total = amount + fees;
+        let mut input = Vec::new();
+        let mut input_sum = 0;
+
+        for entry in self.utxos.utxos.iter() {
+            let pubkey = entry.key();
+            let utxos = entry.value();
+
+            for (marked, utxo) in utxos.iter() {
+                if *marked {
+                    continue;
+                }
+                if input_sum >= total {
+                    continue;
+                }
+                input.push(btclib::types::TransactionInput {
+                    prev_transaction_output_hash: utxo.hash(),
+                    signature: btclib::crypto::Signature::sign_output(
+                        &utxo.hash(),
+                        &self.utxos.my_keys
+                            .iter()
+                            .find(|k| k.public == *pubkey)
+                            .unwrap().private
+                    ),
+                });
+                input_sum += utxo.value;
+            }
+            if input_sum >= total {
+                break;
+            }
+        }
+        if input_sum < total {
+            return Err(anyhow::anyhow!("Insufficiant funds"));
+        }
+        let mut outputs = vec![TransactionOutput {
+            value: amount,
+            unique_id: uuid::Uuid::new_v4(),
+            pubkey: recipient.clone(),
+        }];
+        if input_sum > total {
+            outputs.push(TransactionOutput {
+                value: input_sum - total,
+                unique_id: uuid::Uuid::new_v4(),
+                pubkey: self.utxos.my_keys[0].public.clone(),
+            });
+        }
+        Ok(Transaction::new(input, outputs))
     }
 
     pub fn calculate_fee(&self, amount: u64) -> u64 {
         match self.config.fee_config.fee_type {
             FeeType::Fixed => self.config.fee_config.value as u64,
-            FeeType::Percent => (amount as f64 * self.config.fee_config.value / 100.0) as u64,
+            FeeType::Percent => (((amount as f64) * self.config.fee_config.value) / 100.0) as u64,
         }
     }
 }
